@@ -1,0 +1,11 @@
+# Core app. Streamlit 1.52+ is required for Python 3.14; Pillow 12+ ships 3.14 builds.
+streamlit==1.64.0
+Pillow==12.1.1
+tzdata==2025.2
+
+# Hosted SQLite (Turso). Used only when TURSO_DATABASE_URL is set, which is how the
+# app keeps its data on Streamlit Community Cloud. It ships prebuilt Linux builds for
+# Python 3.9 to 3.13, so deploy on Python 3.12 (the Community Cloud default).
+# The marker skips it on Python 3.14 (no prebuilt build yet), so
+# `pip install -r requirements.txt` works on every supported version for local runs.
+libsql==0.1.11; python_version < "3.14"
