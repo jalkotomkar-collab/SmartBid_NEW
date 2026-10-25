@@ -115,29 +115,81 @@ def _is_local_request() -> bool:
     return host in ("localhost", "127.0.0.1", "::1")
 
 
-def ensure_admin() -> str | None:
-    """Create the first admin account if none exists.
+LAST_ADMIN_ERROR = ""
 
-    Returns a status string: 'dev' when the local development account was created,
-    'missing' when there is no admin and no way to create one safely (no admin secrets
-    set, and the app is hosted or not opened via localhost), otherwise None.
+
+def _apply_admin_secrets(username: str, email: str, password: str) -> None:
+    """Make the administrator named in the secrets exist, be active, and use that password.
+
+    The secrets belong to the site owner, so they are the source of truth for the
+    administrator: a missing account is created; a member who already holds the username
+    or e-mail is promoted; and the stored password is brought in line with ADMIN_PASSWORD.
     """
-    if db.fetch_one("SELECT 1 AS x FROM users WHERE role = 'admin' LIMIT 1"):
-        return None
+    row = db.fetch_one("SELECT id, role, is_active, password_hash, salt FROM users WHERE username = ?", (username,)) \
+        or db.fetch_one("SELECT id, role, is_active, password_hash, salt FROM users WHERE email = ?", (email,))
+    if row is None:
+        _create_user("Administrator", username, email, password, role="admin")
+        return
+    same_password = verify_password(password, row["password_hash"], row["salt"])
+    if row["role"] != "admin" or not row["is_active"] or not same_password:
+        pw_hash, salt = hash_password(password)
+        db.execute(
+            "UPDATE users SET role = 'admin', is_active = 1, password_hash = ?, salt = ? WHERE id = ?",
+            (pw_hash, salt, row["id"]),
+        )
+
+
+def _retire_test_admin() -> None:
+    """On a public or hosted site, switch off the well-known local test administrator."""
+    if db.using_hosted_db() or not _is_local_request():
+        db.execute(
+            "UPDATE users SET is_active = 0 WHERE role = 'admin' AND username = ? AND email = ? "
+            "AND EXISTS (SELECT 1 FROM users o WHERE o.role = 'admin' AND o.is_active = 1 "
+            "AND NOT (o.username = ? AND o.email = ?))",
+            (DEV_ADMIN_USERNAME, DEV_ADMIN_EMAIL, DEV_ADMIN_USERNAME, DEV_ADMIN_EMAIL),
+        )
+
+
+def ensure_admin() -> str | None:
+    """Make sure an administrator account exists.
+
+    Returns a status string: 'dev' when the local test administrator was created,
+    'missing' when there is no administrator and no safe way to create one (no admin
+    secrets, and the app is hosted or not opened via localhost), 'error' when creating
+    the account failed (the reason is kept in LAST_ADMIN_ERROR), otherwise None.
+    """
+    global LAST_ADMIN_ERROR
     username = get_secret("ADMIN_USERNAME")
     password = get_secret("ADMIN_PASSWORD")
     email = get_secret("ADMIN_EMAIL", "admin@example.com")
     status = None
-    if not (username and password):
-        if db.using_hosted_db() or not _is_local_request():
-            return "missing"
-        username, password, email, status = DEV_ADMIN_USERNAME, DEV_ADMIN_PASSWORD, DEV_ADMIN_EMAIL, "dev"
     try:
-        _create_user("Administrator", username, email, password, role="admin")
-    except Exception:
-        # Another session created it first, or the username/email was taken.
-        return None
+        if username and password:
+            _apply_admin_secrets(str(username), str(email), str(password))
+        elif db.fetch_one("SELECT 1 AS x FROM users WHERE role = 'admin' LIMIT 1"):
+            pass
+        elif db.using_hosted_db() or not _is_local_request():
+            return "missing"
+        else:
+            _create_user("Administrator", DEV_ADMIN_USERNAME, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD, role="admin")
+            status = "dev"
+        _retire_test_admin()
+    except Exception as exc:
+        LAST_ADMIN_ERROR = f"{type(exc).__name__}: {exc}"[:240]
+        print(f"[SmartBid] could not set up the administrator: {LAST_ADMIN_ERROR}")
+        return "error"
+    LAST_ADMIN_ERROR = ""
     return status
+
+
+def admin_setup_report() -> dict:
+    """What the app can see about its set-up. Names and yes/no only, never the values."""
+    keys = ["ADMIN_USERNAME", "ADMIN_EMAIL", "ADMIN_PASSWORD", "TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN"]
+    return {
+        "secrets": {k: get_secret(k) not in (None, "") for k in keys},
+        "database": "Turso (permanent)" if db.using_hosted_db() else "a local file (erased when this host restarts)",
+        "error": LAST_ADMIN_ERROR,
+    }
 
 
 # -------------------------------------------------------------------- sessions

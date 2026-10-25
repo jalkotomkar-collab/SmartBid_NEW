@@ -25,7 +25,10 @@ def bootstrap():
 
 
 try:
-    st.session_state["admin_status"] = bootstrap()
+    admin_status = bootstrap()
+    if admin_status in ("missing", "error"):
+        admin_status = auth.ensure_admin()  # the secrets may have been added after start-up
+    st.session_state["admin_status"] = admin_status
 except Exception as exc:  # bad database credentials, network problem, etc.
     st.error("The database could not be opened. Check your database settings and try again.")
     st.caption(f"Details: {exc}")

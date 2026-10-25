@@ -37,7 +37,11 @@ def get_secret(name, default=None):
         import streamlit as st
 
         if name in st.secrets:
-            return st.secrets[name]
+            value = st.secrets[name]
+            # A password typed without quotes (for example 12345678) arrives as a number.
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return str(value)
+            return value
     except Exception:
         pass
     return default

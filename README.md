@@ -89,7 +89,7 @@ Settings come from environment variables or `.streamlit/secrets.toml`.
 
 | Key | Purpose |
 |---|---|
-| `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Creates the first administrator. Required when deployed. |
+| `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The administrator. Required when deployed. The secrets are the source of truth: on every start the app creates this account, or promotes a member who already holds that username or e-mail, and sets its password to `ADMIN_PASSWORD`. To change the administrator password, change the secret and reboot. The local test administrator is switched off on any hosted site. |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Use a hosted Turso database instead of the local file. Required on Streamlit Community Cloud. |
 | `SEED_SAMPLE_DATA` | Set to `"0"` to skip the demo listings. |
 
@@ -199,4 +199,5 @@ Product photos on Browse Auctions and Auction Details are whatever sellers uploa
 | `pip install` fails on a package for your Python version | Use Python 3.10 to 3.13 or the exact pins in `requirements.txt`. |
 | "The database could not be opened" on the deployed site | Recheck `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the app's Secrets. |
 | No admin on the deployed site | Add `ADMIN_USERNAME` and `ADMIN_PASSWORD` to Secrets, then reboot the app. |
+| Admin Login shows a "Set-up check" box | It lists which secrets the app can see and, if creation failed, the reason. A common cause is a member who already registered the same username or e-mail: choose a different `ADMIN_USERNAME` / `ADMIN_EMAIL` and reboot. |
 | Sample listings are missing locally | Delete `data/auction.db` and start again. |
